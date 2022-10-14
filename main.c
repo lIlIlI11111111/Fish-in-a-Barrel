@@ -277,6 +277,7 @@ int main(){
 			case 1:
 				getUserInput(&personList, &personCount);
 				incrementAttendees(personList, personCount);
+				sortList(personList, personCount);
 				listAll(personList, personCount);
 				rollWrapper(personList, personCount);
 				break;

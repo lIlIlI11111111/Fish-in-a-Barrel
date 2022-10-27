@@ -1,5 +1,8 @@
 This is a mini-project called "Raffler" by l|l|l|
 
+EASY GUIDE FOR WINDOWS, MINIMAL SETUP
+There is a green button on this website which says code. Clicking it opens a dropdown menu, and the last option is "Download ZIP." Click this, and save the zip to a location you can easily find it. Unzip the zip file. Open the file called "nameInput.txt", and copy the viewer list. Replace all the text in the file with the text of the viewer list, like this: ![Example nameInput.txt](/ExampleNameInput.PNG) It is very important to replace the text with whoever you want in the raffle each time you start the program. Now run "raffler_windows.exe". For usual operation, press "1" and hit enter. Follow the instructions in the same way until you have confirmed a winner. Once you are back at the main menu, press 5 and hit enter to save the data. Finally, hit 9 and enter to exit the program.
+
 Description:
 The raffling algorithm was based off of a design used by a streamer called Veiled616, but I unfortunately do not know the true origins of it. It is a continuously increasing weighted raffle, so the more times a person loses, the more likely they are to win, in general.
 

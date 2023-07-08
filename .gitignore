@@ -1,2 +1,5 @@
+blacklist.txt
 nameInput.txt
 streamname.txt
+venv/
+README.md.backup

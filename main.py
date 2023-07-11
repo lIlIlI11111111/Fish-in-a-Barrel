@@ -5,6 +5,8 @@ import datetime
 import PyQt5.QtWidgets as QTW
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
+import pygame
+import math
 
 maxTitleLen = 1024
 randomPrecision = 1000
@@ -186,6 +188,91 @@ def listAll(personList):
    for p in personList:
         print(f"{p.name}: {p.tickets}, {p.onCooldown}, {p.isIn}")
 
+def handleSpinner(personList):
+    
+    pygame.init()
+    
+    window_size = (400, 400)
+    screen = pygame.display.set_mode(window_size)
+    pygame.display.set_caption("Spinner Wheel")
+    
+    # Define the section colors and labels
+    sections = [
+        {"color": (255, 0, 0), "label": "Section 1", "fraction": 0.2},
+        {"color": (0, 255, 0), "label": "Section 2", "fraction": 0.3},
+        {"color": (0, 0, 255), "label": "Section 3", "fraction": 0.5},
+    ]
+
+    running = True
+    angle = 0
+    spinIsHappening = False
+    spinSpeed = 0.1
+    spinIsDone = False
+    
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+        # Clear the screen
+        screen.fill((0, 0, 0))
+
+        # Calculate the angle range for each section
+        start_angle = angle
+        for section in sections:
+            section["start_angle"] = start_angle
+            section["end_angle"] = start_angle + section["fraction"] * 360
+            start_angle = section["end_angle"]
+
+        # Draw the sections
+        for section in sections:
+            # Calculate the section angles in radians
+            start_angle_rad = math.radians(section["start_angle"])
+            end_angle_rad = math.radians(section["end_angle"])
+
+            # Draw the section arc
+            wheel_rect = pygame.Rect((0,0),window_size)
+            wheel_radius = window_size[0] / 2
+            pygame.draw.arc(screen, section["color"], wheel_rect, start_angle_rad, end_angle_rad)
+
+            # Calculate the label position
+            label_angle = -(section["start_angle"] + section["end_angle"]) / 2
+            label_x = int(200 + wheel_radius * pygame.math.Vector2(1, 0).rotate(label_angle).x)
+            label_y = int(200 + wheel_radius * pygame.math.Vector2(1, 0).rotate(label_angle).y)
+
+            # Draw the label text
+            font = pygame.font.SysFont(None, 20)
+            label_text = font.render(section["label"], True, (255, 255, 255))
+            label_rect = label_text.get_rect(center=(label_x, label_y))
+            screen.blit(label_text, label_rect)
+
+        # Update the spinner angle
+        angle -= spinSpeed
+        
+        if spinIsHappening and not (spinSpeed <= 0):
+            spinSpeed = spinSpeed - 0.0005
+        
+        if spinSpeed < 0.01:
+            spinSpeed = 0
+            spinIsDone = True
+        
+        if not spinIsHappening and pygame.mouse.get_pressed(3)[0] == True:
+            spinIsHappening = True
+            spinSpeed = random.uniform(0.8,1.2)
+            
+        if spinIsDone and pygame.mouse.get_pressed(3)[0] == True:
+            break
+
+        # Update the display
+        pygame.display.update()
+
+    # Quit Pygame
+    pygame.quit()
+
+
+
+        
+        
 class PersonListWidget(QTW.QPlainTextEdit):
     """
     Custom widget for displaying a list of persons.
@@ -413,7 +500,7 @@ class MainWindow(QTW.QWidget):
         # Resize the columns to fit the contents
         self.tableWidget.resizeColumnsToContents()
     def initUI(self):
-        self.setWindowTitle("Rafflerinator 3000")
+        self.setWindowTitle("Fish in a Barrel")
         self.resize(800, 600)  # Set initial width to 800 and height to 600
 
         # Create a vertical layout
@@ -556,6 +643,9 @@ class MainWindow(QTW.QWidget):
         self.textEdit.setPlainText(header + data)"""
     
     def startRolling(self):
+        
+        handleSpinner(self.personList)
+        
         totalTickets = 0
         for person in self.personList:
             if person.isIn and not person.onCooldown:

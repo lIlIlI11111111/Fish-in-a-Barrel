@@ -7,10 +7,13 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
 import pygame
 import math
+import configparser
 
 maxTitleLen = 1024
 randomPrecision = 1000
 SAVE_AND_EXIT_CODE = 100
+
+config = configparser.ConfigParser()
 
 class Person:
     def __init__(self):
@@ -90,6 +93,9 @@ def incrementAttendees(personList):
 
 
 def getUserInput(person_list):
+    """
+    Deprecated, do not use.
+    """
     UIfile = open("nameInput.txt", "r") 
     if UIfile is None:
         print("No suitable input file, exiting with error code 1")
@@ -114,6 +120,9 @@ def getUserInput(person_list):
     return
 
 def roll(personList):
+    """
+    Deprecated, do not use. Replaced by handleSpinner()
+    """
     totalTickets = 0
     for person in personList:
         if person.isIn and not person.onCooldown:
@@ -165,30 +174,149 @@ def sortList(personList):
                 personList[i], personList[i + 1] = personList[i + 1], personList[i]
     print("List sorted")
 
+def shouldResetRegularly():
+    resetStyle = 0;
+    try:
+        config.read('config.ini')
+        resetStyle = config.get('resetStyle', 'value')
+    except (configparser.NoSectionError, configparser.NoOptionError):
+        resetStyle = "monthlydebug"
+    print("resetStyle read as", resetStyle)
+    if resetStyle == "monthly":
+        current_date = datetime.datetime.now()
+        current_month = current_date.month
+        if current_date.day <= 7 and current_month % 2 == 0:
+            return "all"
+        else:
+            return "none"
+    else: #other option would be "per user", but this requires a change at every timestep.
+        return "decrement"
+
 def tryResetRound(personList):
-    current_date = datetime.datetime.now()
-    current_month = current_date.month
-    if current_date.day <= 7 and current_month % 2 == 0:
+    shouldResetByDefault =  shouldResetRegularly()
+    print("shouldResetRegularly returned", shouldResetByDefault)
+    if shouldResetByDefault == "all":
         resetRound(personList)
         print("Round reset successful.")
+    elif shouldResetByDefault == "decrement":
+        resetViaDecrement(personList)
+        print("Decrement-style reset completed")
     elif all(person.isIn == 1 and person.tickets == 0 for person in personList):
         resetRound(personList)
         print("Emergency reset round executed to avoid ")
     else:
         print("Round reset not required.")
 
+def toggleResetStyle():
+    config = configparser.ConfigParser()
+
+    # Check if the config file exists
+    if not config.read('config.ini'):
+        # Create a new config file with the 'resetStyle' section
+        config['resetStyle'] = {'value': 'decrement'}
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
+        print("New config file created.")
+    
+    # Check if the 'resetStyle' section exists in the config file
+    if 'resetStyle' not in config:
+        # Add the 'resetStyle' section with 'decrement' value
+        config['resetStyle'] = {'value': 'decrement'}
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
+        print("'resetStyle' section added with 'decrement' value.")
+    else:
+        # Toggle the value between 'decrement' and 'monthly'
+        current_value = config.get('resetStyle', 'value')
+        new_value = 'monthly' if current_value == 'decrement' else 'decrement'
+        config.set('resetStyle', 'value', new_value)
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
+        print(f"'resetStyle' value toggled to '{new_value}'.")
 
 def resetRound(personList):
     for person in personList:
         person.onCooldown = 0
 
+def resetViaDecrement(personList):
+    frequency = -1
+    try:
+        config.read('config.ini')
+        frequency = config.getint('resetStyle', 'resetFrequency')
+        print("Read frequency from file as ", frequency)
+    except (configparser.NoSectionError, configparser.NoOptionError):
+        frequency = 1
+        print("No frequency detected, using frequency=1")
+    for person in personList:
+        if person.onCooldown >= frequency:
+            person.onCooldown = 0
+        elif person.onCooldown > 0:
+            person.onCooldown += 1
 
 def listAll(personList):
-   print("Name: tickets, onCooldown, isIn")
-   for p in personList:
-        print(f"{p.name}: {p.tickets}, {p.onCooldown}, {p.isIn}")
+    print("Name: tickets, onCooldown, isIn")
+    for p in personList:
+        print(f"{p.name}: {p.tickets}, {p.onCooldown}, {p.isIn}")       
+
+previous_highest_component = None
+current_highest_component = None        
+
+def generate_bright_color():
+    global previous_highest_component
+    global current_highest_component
+
+    low_value = random.randint(0x00, 0x40)
+    random_value = random.randint(0x00, 0xff)
+
+    if current_highest_component is None:
+        # Choose a random component as the highest
+        current_highest_component = random.choice(["r", "g", "b"])
+    elif previous_highest_component is None:
+        # Set previous_highest_component if it is None (first call after initialization)
+        previous_highest_component = current_highest_component
+
+    # Assign the high value to the chosen component
+    if current_highest_component == "r":
+        r = random.randint(0xd0, 0xff)
+        g, b = low_value, random_value
+    elif current_highest_component == "g":
+        g = random.randint(0xd0, 0xff)
+        r, b = low_value, random_value
+    else:  # current_highest_component == "b"
+        b = random.randint(0xd0, 0xff)
+        r, g = low_value, random_value
+
+    # Update previous_highest_component and current_highest_component
+    previous_highest_component = current_highest_component
+    current_highest_component = random.choice(["r", "g", "b"])
+
+    return (r, g, b)
 
 def handleSpinner(personList):
+    
+    #Handling the personList data
+    totalTickets = sum(person.tickets for person in personList if person.isIn and not person.onCooldown)
+    
+    if totalTickets == 0:
+        print("Error, no contestants had any tickets. Error with dividing by 0.")
+        return -1
+    
+    sections = []
+    for person in personList:
+        if person.isIn and not person.onCooldown:
+            # Generate a random color for the section
+            color = generate_bright_color()
+
+            # Calculate the fraction of tickets for the person
+            fraction = person.tickets / totalTickets
+
+            # Create a section dictionary with color, label, and fraction
+            section = {"color": color, "label": person.name, "fraction": fraction}
+
+            # Add the section to the sections list
+            sections.append(section)
+            
+    
     
     pygame.init()
     
@@ -197,17 +325,18 @@ def handleSpinner(personList):
     pygame.display.set_caption("Spinner Wheel")
     
     # Define the section colors and labels
-    sections = [
-        {"color": (255, 0, 0), "label": "Section 1", "fraction": 0.2},
-        {"color": (0, 255, 0), "label": "Section 2", "fraction": 0.3},
-        {"color": (0, 0, 255), "label": "Section 3", "fraction": 0.5},
-    ]
+    #sections = [
+    #    {"color": (255, 0, 0), "label": "Section 1", "fraction": 0.2},
+    #    {"color": (0, 255, 0), "label": "Section 2", "fraction": 0.3},
+    #    {"color": (0, 0, 255), "label": "Section 3", "fraction": 0.5},
+    #]
 
     running = True
     angle = 0
     spinIsHappening = False
     spinSpeed = 0.1
     spinIsDone = False
+    winner = None
     
     while running:
         for event in pygame.event.get():
@@ -231,8 +360,8 @@ def handleSpinner(personList):
             end_angle_rad = math.radians(section["end_angle"])
 
             # Draw the section arc
-            wheel_rect = pygame.Rect((0,0),window_size)
-            wheel_radius = window_size[0] / 2
+            wheel_radius = window_size[0] / 2.5
+            wheel_rect = pygame.Rect((window_size[0]/10,window_size[0]/10),(wheel_radius*2,wheel_radius*2))
             pygame.draw.arc(screen, section["color"], wheel_rect, start_angle_rad, end_angle_rad)
 
             # Calculate the label position
@@ -260,15 +389,59 @@ def handleSpinner(personList):
             spinIsHappening = True
             spinSpeed = random.uniform(0.8,1.2)
             
-        if spinIsDone and pygame.mouse.get_pressed(3)[0] == True:
+        if spinIsDone:
+            target_angle = 90
+
+            for section in sections:
+                start_angle = section["start_angle"]
+                end_angle = section["end_angle"]
+
+                # Normalize the angles to be between 0 and 360
+                start_angle %= 360
+                end_angle %= 360
+
+                if start_angle < end_angle:
+                    # Case where the section does not span across 0 degrees
+                    if start_angle <= target_angle < end_angle:
+                        winner = section["label"]
+                        break
+                else:
+                    # Case where the section spans across 0 degrees
+                    if start_angle <= target_angle or target_angle < end_angle:
+                        winner = section["label"]
+                        break
             break
 
+        #draw ticker
+        ticker_rect = pygame.Rect((window_size[0]/2)-4, (window_size[0]/10)-10, 8, (window_size[1]/10))
+        pygame.draw.rect(screen, 0xffffff, ticker_rect)
+        
         # Update the display
         pygame.display.update()
 
-    # Quit Pygame
-    pygame.quit()
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+        
+        # Render the text surface with the winner's name
+        text_surface = font.render(winner, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(label_x, label_y))
 
+        # Calculate the position to center the text on the screen
+        text_x = (window_size[0] - text_rect.width) // 2
+        text_y = (window_size[1] - text_rect.height) // 2
+
+        screen.blit(text_surface, (text_x, text_y))
+
+        pygame.display.flip()
+        
+        if pygame.mouse.get_pressed(3)[0]:
+            break
+    # Quit Pygame
+    
+    pygame.quit()
+    return winner
 
 
         
@@ -530,30 +703,53 @@ class MainWindow(QTW.QWidget):
         functionsGroupBox.setLayout(functionsLayout)
         layout.addWidget(functionsGroupBox, 1, 1)
         
-        # Create buttons for each option
+        #Functions buttons
         button1 = QTW.QPushButton("Default procedure")
         button1.clicked.connect(self.handleOption1)
         functionsLayout.addWidget(button1)
+        
+        #resetStyle things
+        resetGroupBox = QTW.QGroupBox("Reset Style:")
+        resetLayout = QTW.QVBoxLayout()
+        resetGroupBox.setMaximumHeight(100)
+        resetGroupBox.setLayout(resetLayout)
+        functionsLayout.addWidget(resetGroupBox)
+        
+        button2 = QTW.QPushButton("Toggle reset style")
+        button2.clicked.connect(self.handleOption2)
+        resetLayout.addWidget(button2)
+        
+        config.read('config.ini')
+        self.resetSlider = QTW.QSlider(Qt.Horizontal)
+        self.resetSlider.setMinimum(1)
+        self.resetSlider.setMaximum(10)
+        self.resetSlider.setTickPosition(QTW.QSlider.TicksBelow)
+        self.resetSlider.setTickInterval(1)
+        self.resetSlider.setValue(self.getConfigValue())
+        self.resetSlider.valueChanged.connect(self.updateConfig)
+        self.resetSlider.setTickPosition(QTW.QSlider.TicksBothSides)
+        self.resetSlider.setTickInterval(1)
+        self.resetSlider.setSingleStep(1)
+        
+        #sliderLayout = QTW.QGridLayout()
+        #sliderGroupBox = QTW.QGroupBox()
+        #sliderGroupBox.setLayout(sliderLayout)
+        #sliderLayout.addWidget(self.resetSlider, 0, 0, 1, 3)
+        #for i in range(11):
+        #    label = QTW.QLabel(str(i))
+        #    sliderLayout.addWidget(label, 1, i)
+        #resetLayout.addWidget(sliderGroupBox)
+        resetLayout.addWidget(self.resetSlider)
+        
 
-        #button2 = QTW.QPushButton("Add new members from input file")
-        #button2.clicked.connect(self.handleOption2)
-        #functionsLayout.addWidget(button2)
-
+        #Rest of the functions buttons
         button3 = QTW.QPushButton("Increment active users")
         button3.clicked.connect(self.handleOption3)
         functionsLayout.addWidget(button3)
 
-        #button4 = QTW.QPushButton("Roll active users")
-        #button4.clicked.connect(self.handleOption4)
-        #functionsLayout.addWidget(button4)
-
         button5 = QTW.QPushButton("Save data to data file")
         button5.clicked.connect(self.handleOption5)
         functionsLayout.addWidget(button5)
-
-        #button6 = QTW.QPushButton("List all people")
-        #button6.clicked.connect(self.handleOption6)
-        #functionsLayout.addWidget(button6)
 
         button7 = QTW.QPushButton("Sort the list")
         button7.clicked.connect(self.handleOption7)
@@ -576,7 +772,7 @@ class MainWindow(QTW.QWidget):
         self.tableWidget.setItemDelegate(delegate)
 
 
-        
+        #Loading stuff buttons
         self.streamURLField = QTW.QPlainTextEdit()
         self.streamURLField.setMaximumHeight(50)  # Set the maximum height
         self.streamURLField.setMaximumWidth(300)  # Set the maximum width
@@ -599,6 +795,7 @@ class MainWindow(QTW.QWidget):
         self.blacklistField.setPlaceholderText("Blacklist")
         loadingStuffLayout.addWidget(self.blacklistField)
         
+        #Rolling buttons
         self.rollLabel = QTW.QLabel("Click 'Roll' to start rolling.")
         self.rollLabel.setMaximumWidth(1000)
         self.rollLabel.setWordWrap(True)
@@ -607,6 +804,7 @@ class MainWindow(QTW.QWidget):
         self.denyButton = QTW.QPushButton("Deny Winner")
         self.cancelButton = QTW.QPushButton("Cancel Rolling")
 
+        #Placing rolling buttons on rolling widget
         rollingLayout.addWidget(self.rollLabel, 1, 1)
         rollingLayout.addWidget(self.rollButton, 2, 1)
         rollingLayout.addWidget(self.acceptButton, 3, 1)
@@ -644,35 +842,20 @@ class MainWindow(QTW.QWidget):
     
     def startRolling(self):
         
-        handleSpinner(self.personList)
-        
-        totalTickets = 0
+        winnername = handleSpinner(self.personList)
+        winnerSelected = False
         for person in self.personList:
-            if person.isIn and not person.onCooldown:
-                totalTickets += person.tickets
-        
-        if totalTickets == 0:
-            self.rollLabel.setText("Error, no contestants had any tickets. Error with dividing by 0.")
-            return
-        
-        r = random.randint(1, totalTickets)
-        cumulativeSum = 0
-        winnerIndex = -1
-        for i, person in enumerate(self.personList):
-            if person.isIn and not person.onCooldown:
-                cumulativeSum += person.tickets
-                if cumulativeSum >= r:
-                    winnerIndex = i
-                    self.rollLabel.setText("With {} tickets, the winner is {}".format(person.tickets, person.name))
-                    break
-        self.currentWinner = self.personList[winnerIndex]
-        if winnerIndex == -1:
+            if winnername == person.name:
+                self.rollButton.setEnabled(False)
+                self.acceptButton.setEnabled(True)
+                self.denyButton.setEnabled(True)
+                self.cancelButton.setEnabled(True)
+                self.currentWinner = person
+                self.rollLabel.setText("With {} tickets, the winner is {}".format(person.tickets, person.name))
+                winnerSelected = True
+                break
+        if(not winnerSelected):
             self.rollLabel.setText("A strange error occurred in which no one won. Roll again, maybe, idk?")
-        else:
-            self.rollButton.setEnabled(False)
-            self.acceptButton.setEnabled(True)
-            self.denyButton.setEnabled(True)
-            self.cancelButton.setEnabled(True)
             
     def saveStreamNameToFile(self):
         storePlainTextToFile(self.streamURLField, "streamname.txt")
@@ -727,8 +910,18 @@ class MainWindow(QTW.QWidget):
         blacklistCull(self.blacklistField.toPlainText().split("\n"), self.personList)
         self.handleOption7()
         return
-        
-        
+    
+    def getConfigValue(self):
+        # Get the 'resetStyle' value from the config file
+        return int(config.get('resetStyle', 'resetfrequency', fallback='1'))
+    
+    def updateConfig(self, value):
+        # Update the 'resetStyle' value in the config file
+        config.set('resetStyle', 'resetfrequency', str(value))
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
+        print(f"'resetStyle' value updated: {value}")
+    
     def dataLossWarning(self):
         self.saveStreamNameToFile()
         self.saveBlacklistToFile()
@@ -817,10 +1010,8 @@ class MainWindow(QTW.QWidget):
         #listAll(self.personList)
         self.startRolling()
 
-    #def handleOption2(self):
-    #    getUserInput(self.personList)
-    #    self.loadPersonListData()
-    #    listAll(self.personList)
+    def handleOption2(self):
+        toggleResetStyle()
 
     def handleOption3(self):
         incrementAttendees(self.personList)
@@ -834,10 +1025,6 @@ class MainWindow(QTW.QWidget):
     def handleOption5(self):
         self.saveBlacklistToFile()
         writeFile(self.personList)
-
-    def handleOption6(self):
-        self.loadPersonListData()
-        #listAll(self.personList)
 
     def handleOption7(self):
         sortList(self.personList)
@@ -873,7 +1060,7 @@ def main():
     app.setStyleSheet(stylesheet)
     window = MainWindow(personList)
     window.resize(1500,1000)
-    icon = QIcon("./TestIcon.png")
+    icon = QIcon("./Icon.jpg")
     window.setWindowIcon(icon)
     window.showMaximized()
     sys.exit(app.exec_())

@@ -69,7 +69,7 @@ For day-to-day usage, open the program, copy-paste your viewer list into the "Na
 	This doesn't have a practical use, but it can be a nice way to visualize who has how many tickets, who is on cooldown, or other data you may want.
 
 ## Contributing
-If you would like to contribute, just ask me first. There's plenty of features yet to be implemented, and if you want to help, I'd be happy to share the list. If you have feature requests, you can submit an issue or contact me directly as well.
+If you would like to contribute, just ask me first. There's plenty of features yet to be implemented, and if you want to help, I'd be happy to share the list. If you have feature requests, you can submit an issue or contact me directly as well. Also, if you can translate or document code, that would also be helpful.
 
 ## License
 See LICENSE.txt (Spoiler it's GNU)

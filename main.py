@@ -704,7 +704,7 @@ class MainWindow(QTW.QWidget):
         layout.addWidget(functionsGroupBox, 1, 1)
         
         #Functions buttons
-        button1 = QTW.QPushButton("Default procedure")
+        button1 = QTW.QPushButton("Default procedure (CTRL + SHIFT + Enter)")
         button1.clicked.connect(self.handleOption1)
         functionsLayout.addWidget(button1)
         
@@ -747,7 +747,7 @@ class MainWindow(QTW.QWidget):
         button3.clicked.connect(self.handleOption3)
         functionsLayout.addWidget(button3)
 
-        button5 = QTW.QPushButton("Save data to data file")
+        button5 = QTW.QPushButton("Save data to data file (CTRL + S)")
         button5.clicked.connect(self.handleOption5)
         functionsLayout.addWidget(button5)
 
@@ -759,7 +759,7 @@ class MainWindow(QTW.QWidget):
         button8.clicked.connect(self.handleOption8)
         functionsLayout.addWidget(button8)
 
-        button9 = QTW.QPushButton("Exit from the program")
+        button9 = QTW.QPushButton("Exit from the program (CTRL + W) OR (CTRL + Q)")
         button9.clicked.connect(self.handleOption9)
         functionsLayout.addWidget(button9)
         
@@ -839,6 +839,24 @@ class MainWindow(QTW.QWidget):
             )
             data += formatted_data
         self.textEdit.setPlainText(header + data)"""
+    
+    def keyPressEvent(self, event):
+        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_Q:
+            # Handle CTRL+Q hotkey
+            self.handleOption9()
+        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_W:
+            # Handle CTRL+W hotkey
+            self.handleOption9()
+        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_S:
+            # Handle CTRL+S hotkey
+            self.handleOption5()
+        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_L:
+            # Handle CTRL+S hotkey
+            self.getInputFromField()
+        if (event.modifiers() == (Qt.ControlModifier | Qt.ShiftModifier) and
+                event.key() == Qt.Key_Return):
+            #Handle CTRL+SHIFT+Enter
+            self.handleOption1()
     
     def startRolling(self):
         

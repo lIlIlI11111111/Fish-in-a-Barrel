@@ -23,12 +23,8 @@ Once the installation is complete, open a new command prompt and type python --v
    - Extract the ZIP file to a convenient location on your computer.
 
 3. **Setup**:
-   - Open a command prompt or PowerShell window.
-   - Open a command prompt by pressing the Windows key, then typing "cmd" or "powershell" without the quotes and hitting Enter. Copy the path of the folder from the address bar at the top of the File Explorer window. For example, if the path is `C:\Users\YourName\repository`, copy that path.
-   - Go back to the command prompt or PowerShell window and type cd followed by a space. For example, if the path you copied is `C:\Users\YourName\repository`, type: `cd C:\Users\YourName\repository`
-Press Enter to execute the command.
-   - Navigate to the extracted repository folder. First find where you placed it with File Explorer.
-   - Run the setup batch file by typing `setup.bat` and pressing Enter.
+   - Run the setup batch file by double-clicking the `setup.bat` file.
+   - If it pops up that the an unknown program is running and Windows wants to stop it, click something like "more options" inside the text (it's kind of hidden), and then something like "run anyway." This message may appear once for `setup.bat` and `run.bat`, but then they will be recognized and stop giving these warnings.
 
 ### Linux
 

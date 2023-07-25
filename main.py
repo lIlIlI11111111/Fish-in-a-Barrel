@@ -441,7 +441,7 @@ def handleSpinner(personList):
     # Quit Pygame
     
     pygame.quit()
-    return winner
+    return winner, totalTickets
 
 
         
@@ -860,7 +860,8 @@ class MainWindow(QTW.QWidget):
     
     def startRolling(self):
         
-        winnername = handleSpinner(self.personList)
+        winnername, totalTickets = handleSpinner(self.personList)
+        print("Total tickets were: ", totalTickets)
         winnerSelected = False
         for person in self.personList:
             if winnername == person.name:
@@ -869,7 +870,7 @@ class MainWindow(QTW.QWidget):
                 self.denyButton.setEnabled(True)
                 self.cancelButton.setEnabled(True)
                 self.currentWinner = person
-                self.rollLabel.setText("With {} tickets, the winner is {}".format(person.tickets, person.name))
+                self.rollLabel.setText("With {} out of {} tickets, the winner is {}".format(person.tickets, totalTickets, person.name))
                 winnerSelected = True
                 break
         if(not winnerSelected):

@@ -24,7 +24,7 @@ Once the installation is complete, open a new command prompt and type python --v
 
 3. **Setup**:
    - Run the setup batch file by double-clicking the `setup.bat` file.
-   - If it pops up that the an unknown program is running and Windows wants to stop it, click something like "more options" inside the text (it's kind of hidden), and then something like "run anyway." This message may appear once for `setup.bat` and `run.bat`, but then they will be recognized and stop giving these warnings.
+   - If it pops up that the an unknown program is running and Windows wants to stop it, click "more info" inside the text (it's kind of hidden), and then "run anyway." This message may appear once for `setup.bat` and `run.bat`, but then they will be recognized and stop giving these warnings.
 
 ### Linux
 

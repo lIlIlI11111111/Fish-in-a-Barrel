@@ -319,6 +319,7 @@ def handleSpinner(personList):
     
     
     pygame.init()
+    clock = pygame.time.Clock()
     
     window_size = (400, 400)
     screen = pygame.display.set_mode(window_size)
@@ -334,11 +335,12 @@ def handleSpinner(personList):
     running = True
     angle = 0
     spinIsHappening = False
-    spinSpeed = 0.1
+    spinSpeed = 1
     spinIsDone = False
     winner = None
     
     while running:
+        dt = clock.tick(60) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -376,10 +378,10 @@ def handleSpinner(personList):
             screen.blit(label_text, label_rect)
 
         # Update the spinner angle
-        angle -= spinSpeed
+        angle -= spinSpeed * 60 * dt
         
         if spinIsHappening and not (spinSpeed <= 0):
-            spinSpeed = spinSpeed - 0.0005
+            spinSpeed = spinSpeed - (0.9 * dt)
         
         if spinSpeed < 0.01:
             spinSpeed = 0
@@ -387,7 +389,7 @@ def handleSpinner(personList):
         
         if not spinIsHappening and pygame.mouse.get_pressed(3)[0] == True:
             spinIsHappening = True
-            spinSpeed = random.uniform(0.8,1.2)
+            spinSpeed = random.uniform(0.75,1.25) * 6
             
         if spinIsDone:
             target_angle = 90
@@ -418,6 +420,7 @@ def handleSpinner(personList):
         
         # Update the display
         pygame.display.update()
+        clock.tick(60)
 
     while running:
         for event in pygame.event.get():

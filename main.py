@@ -2,9 +2,9 @@ import random
 import sys
 import os
 import datetime
-import PyQt5.QtWidgets as QTW
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import Qt
+import PyQt6.QtWidgets as QTW
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
 import pygame
 import math
 import configparser
@@ -723,14 +723,14 @@ class MainWindow(QTW.QWidget):
         resetLayout.addWidget(button2)
         
         config.read('config.ini')
-        self.resetSlider = QTW.QSlider(Qt.Horizontal)
+        self.resetSlider = QTW.QSlider(Qt.Orientation.Horizontal)
         self.resetSlider.setMinimum(1)
         self.resetSlider.setMaximum(10)
-        self.resetSlider.setTickPosition(QTW.QSlider.TicksBelow)
+        self.resetSlider.setTickPosition(QTW.QSlider.TickPosition.TicksBelow)
         self.resetSlider.setTickInterval(1)
         self.resetSlider.setValue(self.getConfigValue())
         self.resetSlider.valueChanged.connect(self.updateConfig)
-        self.resetSlider.setTickPosition(QTW.QSlider.TicksBothSides)
+        self.resetSlider.setTickPosition(QTW.QSlider.TickPosition.TicksBothSides)
         self.resetSlider.setTickInterval(1)
         self.resetSlider.setSingleStep(1)
         
@@ -768,7 +768,7 @@ class MainWindow(QTW.QWidget):
         
         self.tableWidget = QTW.QTableWidget()
         layout.addWidget(self.tableWidget, 2, 2)
-        self.tableWidget.setEditTriggers(QTW.QAbstractItemView.NoEditTriggers)
+        self.tableWidget.setEditTriggers(QTW.QAbstractItemView.EditTrigger.NoEditTriggers)
 
         # Create a delegate and set it for the table widget
         delegate = QTW.QStyledItemDelegate()
@@ -844,20 +844,20 @@ class MainWindow(QTW.QWidget):
         self.textEdit.setPlainText(header + data)"""
     
     def keyPressEvent(self, event):
-        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_Q:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Q:
             # Handle CTRL+Q hotkey
             self.handleOption9()
-        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_W:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_W:
             # Handle CTRL+W hotkey
             self.handleOption9()
-        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_S:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_S:
             # Handle CTRL+S hotkey
             self.handleOption5()
-        if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_L:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_L:
             # Handle CTRL+S hotkey
             self.getInputFromField()
-        if (event.modifiers() == (Qt.ControlModifier | Qt.ShiftModifier) and
-                event.key() == Qt.Key_Return):
+        if (event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier) and
+                event.key() == Qt.Key.Key_Return):
             #Handle CTRL+SHIFT+Enter
             self.handleOption1()
     
@@ -951,7 +951,7 @@ class MainWindow(QTW.QWidget):
             sys.exit()
         
         dialog = DataLossDialog()
-        result = dialog.exec_()
+        result = dialog.exec()
         customResult = dialog.custom_result
         #print("Result: ", result)
         #print("customResult: ", customResult)
@@ -962,11 +962,11 @@ class MainWindow(QTW.QWidget):
             self.handleOption5()
             #print("Data SHOULD be saved...")
             sys.exit()
-        elif result == QTW.QDialog.Accepted:
+        elif result == QTW.QDialog.DialogCode.Accepted:
             # User clicked "Exit without Saving"
             print("Exit without Saving")
             sys.exit()
-        elif result == QTW.QDialog.Rejected:
+        elif result == QTW.QDialog.DialogCode.Rejected:
             # User clicked "Cancel"
             print("Canceling")
 
@@ -1085,7 +1085,7 @@ def main():
     icon = QIcon("./Icon.jpg")
     window.setWindowIcon(icon)
     window.showMaximized()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
     
     #TODO implement

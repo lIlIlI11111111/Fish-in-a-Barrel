@@ -5,3 +5,4 @@ venv/
 README.md.backup
 tempshell.sh
 userDataList.txt
+__pycache__/

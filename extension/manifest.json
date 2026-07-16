@@ -3,7 +3,6 @@
   "name": "Fish-in-a-Barrel Viewer Bridge",
   "version": "1.0.0",
   "description": "Scrapes the piczel.tv viewer list (names + shared-IP groups) and hands it to the Fish-in-a-Barrel raffle app over localhost.",
-  "permissions": ["scripting", "tabs"],
   "host_permissions": [
     "https://piczel.tv/*",
     "http://127.0.0.1:8422/*",

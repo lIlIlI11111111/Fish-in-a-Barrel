@@ -1,18 +1,18 @@
-// Background service worker: bridges the Fish-in-a-Barrel app and piczel.tv.
+// Background service worker: performs the localhost network calls for the bridge.
 //
-// The app hosts a localhost HTTP server (the extension can't listen on a port),
-// so we poll GET /request. When the app has an active scrape request whose stream
-// matches an open piczel watch tab, we ask that tab's content script to scrape
-// the viewer list and POST it back to /viewers. Doing the localhost fetch here in
-// the background (with host_permissions) avoids page-CSP / CORS problems.
+// In Manifest V3 the service worker is event-driven and gets killed when idle, so
+// it can't run its own poll loop. Instead the persistent content script pings us
+// every tick (which also wakes us if we were asleep); we check the app's pending
+// request and, when it matches the pinging tab, tell the content script to scrape,
+// then POST the scraped viewers to the app. Keeping the fetch here (extension
+// origin) avoids the page's upgrade-insecure-requests CSP.
 
 const api = globalThis.browser ?? globalThis.chrome;
 
 const BASE = "http://127.0.0.1:8422";
-const POLL_MS = 500;
 
-// Last streamer slug we already fulfilled, so we don't re-scrape repeatedly for
-// the same request while it stays active.
+// Streamer slug we've already fulfilled for the current active request, so we
+// scrape once per request rather than every 500ms tick.
 let lastHandled = null;
 
 function slug(url) {
@@ -23,48 +23,40 @@ function slug(url) {
   }
 }
 
-async function findWatchTab(wantSlug) {
-  const tabs = await api.tabs.query({ url: "https://piczel.tv/watch/*" });
-  return tabs.find((t) => slug(t.url) === wantSlug) || null;
-}
+api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg) return;
 
-function scrapeTab(tabId) {
-  return new Promise((resolve) => {
-    api.tabs.sendMessage(tabId, { type: "scrapeViewers" }, (resp) => {
-      if (api.runtime.lastError) resolve(null);
-      else resolve(resp || null);
-    });
-  });
-}
+  if (msg.type === "poll") {
+    const pageSlug = slug((sender.tab && sender.tab.url) || msg.url || "");
+    fetch(`${BASE}/request`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((req) => {
+        if (!req.active) {
+          lastHandled = null;
+          sendResponse({ scrape: false });
+          return;
+        }
+        const want = slug(req.url);
+        if (want && want === pageSlug && want !== lastHandled) {
+          lastHandled = want; // fulfil this request once
+          console.log("[FiaB bridge] scrape request for", want);
+          sendResponse({ scrape: true });
+        } else {
+          sendResponse({ scrape: false });
+        }
+      })
+      .catch(() => sendResponse({ scrape: false })); // app not running / unreachable
+    return true; // keep the message channel open for the async sendResponse
+  }
 
-async function poll() {
-  try {
-    const res = await fetch(`${BASE}/request`, { cache: "no-store" });
-    const req = await res.json();
-
-    if (!req.active) {
-      lastHandled = null;
-      return;
-    }
-
-    const wantSlug = slug(req.url);
-    if (wantSlug === lastHandled) return; // already handled this active request
-
-    const tab = await findWatchTab(wantSlug);
-    if (!tab) return; // no matching open piczel tab; keep polling
-
-    const scraped = await scrapeTab(tab.id);
-    if (!scraped) return;
-
-    await fetch(`${BASE}/viewers`, {
+  if (msg.type === "submit") {
+    fetch(`${BASE}/viewers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: scraped.url, viewers: scraped.viewers }),
-    });
-    lastHandled = wantSlug;
-  } catch (e) {
-    // App not running / server unreachable — stay quiet and keep polling.
+      body: JSON.stringify({ url: msg.url, viewers: msg.viewers }),
+    })
+      .then(() => console.log("[FiaB bridge] submitted", (msg.viewers || []).length, "viewers"))
+      .catch((e) => console.log("[FiaB bridge] submit failed:", e));
+    return; // no response expected
   }
-}
-
-setInterval(poll, POLL_MS);
+});

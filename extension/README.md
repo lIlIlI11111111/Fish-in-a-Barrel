@@ -12,9 +12,14 @@ shared-IP group, neutralizing IP-sharing.
    port, so the app is the server and this extension is the client.
 2. When you click **Load from site (extension)** in the app, it posts a scrape
    request for the current stream URL.
-3. This extension polls the app, and when it sees a request matching an open
-   `piczel.tv/watch/<name>` tab, it scrapes that tab and posts the viewer list
-   (names + 2-char shared-IP group ids) back to the app.
+3. The **content script** on the piczel tab pings the app (via the background
+   service worker) a couple times a second. When it sees a request matching its
+   tab, it scrapes the viewer list (names + 2-char shared-IP group ids) and the
+   background posts it back to the app.
+
+The content script drives the loop on purpose: a Manifest V3 background service
+worker is killed when idle and can't run a reliable timer, but the content script
+lives as long as the tab is open and wakes the worker each ping.
 
 If the extension doesn't answer within ~2 seconds (not installed, app not running,
 or no matching tab), the app asks you to paste the viewer list manually instead.
@@ -30,6 +35,24 @@ or no matching tab), the app asks you to paste the viewer list manually instead.
 1. Go to `about:debugging#/runtime/this-firefox`.
 2. Click **Load Temporary Add-on…**.
 3. Select `extension/manifest.json`. (Temporary add-ons are removed on restart.)
+
+## Debugging
+
+- After changing any extension file, click the **reload** icon on the extension in
+  `chrome://extensions` (or re-load the temporary add-on in Firefox), then reload
+  the piczel tab so the new content script runs.
+- The service worker showing **"(inactive)"** is normal — it's event-driven and
+  sleeps between pings. It wakes on each content-script ping; you don't need to
+  keep its inspector open.
+- Open the **piczel tab's** DevTools console: you should see
+  `[FiaB bridge] content script active on …` on load, and
+  `[FiaB bridge] scraped N viewers, submitting` when you click Load in the app. If
+  you don't see the "active" line, the content script isn't injected (wrong URL —
+  it only runs on `https://piczel.tv/watch/*` — or the extension needs reloading).
+- In the service worker console (`chrome://extensions` → the extension →
+  "service worker") you should see `scrape request for <name>` and
+  `submitted N viewers`. A `submit failed` / fetch error there means the app isn't
+  running or the port doesn't match `config.ini`.
 
 ## Notes
 

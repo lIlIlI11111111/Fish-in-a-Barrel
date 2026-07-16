@@ -53,9 +53,52 @@ function scrapeViewers() {
   return viewers;
 }
 
-api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg && msg.type === "scrapeViewers") {
-    sendResponse({ url: location.href, viewers: scrapeViewers() });
+// The viewer list only exists in the DOM while the chat's "user list" panel is
+// expanded (it's collapsed by default). The list entries are the only `button > b`
+// on the page, so their presence is our "panel is open" signal.
+function userListOpen() {
+  return document.querySelector("button > b") !== null;
+}
+
+function userListToggle() {
+  return document.querySelector('button[title="Toggle user list"]');
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Open the user-list panel if needed, scrape, then restore the panel to how we
+// found it (only closing it again if we were the ones who opened it).
+async function ensureUserListAndScrape() {
+  const toggle = userListToggle();
+  let opened = false;
+  if (!userListOpen() && toggle) {
+    toggle.click();
+    opened = true;
+    for (let i = 0; i < 40 && !userListOpen(); i++) await wait(50); // up to ~2s for render
   }
-  return true;
-});
+  const viewers = scrapeViewers();
+  if (opened && toggle) toggle.click(); // leave the streamer's UI as we found it
+  return viewers;
+}
+
+// The content script lives as long as the piczel tab is open, so it drives the
+// loop and acts as a heartbeat that wakes the (idle-prone) service worker. Every
+// tick it asks the background whether the app has a pending scrape request for
+// this page; if so, it opens+scrapes the user list and hands it back to be POSTed.
+const POLL_MS = 500;
+
+function tick() {
+  api.runtime.sendMessage({ type: "poll", url: location.href }, async (resp) => {
+    if (api.runtime.lastError) return; // worker restarting; retry next tick
+    if (resp && resp.scrape) {
+      const viewers = await ensureUserListAndScrape();
+      console.log("[FiaB bridge] scraped", viewers.length, "viewers, submitting");
+      api.runtime.sendMessage({ type: "submit", url: location.href, viewers });
+    }
+  });
+}
+
+setInterval(tick, POLL_MS);
+console.log("[FiaB bridge] content script active on", location.href);

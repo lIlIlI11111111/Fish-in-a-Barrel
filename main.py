@@ -3,7 +3,7 @@ import sys
 import os
 import datetime
 import PyQt6.QtWidgets as QTW
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt
 import pygame
 import math
@@ -764,6 +764,23 @@ class MainWindow(QTW.QWidget):
         self.sharedIpGroups = {}  # in-memory only: group id -> [names]; never persisted/shown
 
         self.initUI()
+        self.registerShortcuts()
+
+    def registerShortcuts(self):
+        # Application-level shortcuts so hotkeys fire regardless of which widget has
+        # focus (a focused text field would otherwise swallow keys like Enter).
+        bindings = [
+            ("Ctrl+Q", self.handleOption9),
+            ("Ctrl+W", self.handleOption9),
+            ("Ctrl+S", self.handleOption5),
+            ("Ctrl+L", self.getInputFromField),
+            ("Ctrl+Shift+Return", self.handleOption1),  # main Enter
+            ("Ctrl+Shift+Enter", self.handleOption1),   # numpad Enter
+        ]
+        for seq, slot in bindings:
+            shortcut = QShortcut(QKeySequence(seq), self)
+            shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            shortcut.activated.connect(slot)
     def loadPersonListData(self):
         # Clear the table
         self.tableWidget.clear()
@@ -962,27 +979,18 @@ class MainWindow(QTW.QWidget):
             data += formatted_data
         self.textEdit.setPlainText(header + data)"""
     
-    def keyPressEvent(self, event):
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Q:
-            # Handle CTRL+Q hotkey
-            self.handleOption9()
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_W:
-            # Handle CTRL+W hotkey
-            self.handleOption9()
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_S:
-            # Handle CTRL+S hotkey
-            self.handleOption5()
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_L:
-            # Handle CTRL+S hotkey
-            self.getInputFromField()
-        if (event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier) and
-                event.key() == Qt.Key.Key_Return):
-            #Handle CTRL+SHIFT+Enter
-            self.handleOption1()
-    
+    # Hotkeys are registered as application-level QShortcuts in registerShortcuts();
+    # see that method rather than overriding keyPressEvent (which only fires when no
+    # focused child widget consumes the key).
+
     def startRolling(self):
-        
-        winnername, totalTickets = handleSpinner(self.personList)
+
+        result = handleSpinner(self.personList)
+        if not isinstance(result, tuple):
+            # handleSpinner returns -1 when no eligible viewer has any tickets.
+            self.rollLabel.setText("No eligible viewers with tickets to roll. Load viewers first.")
+            return
+        winnername, totalTickets = result
         print("Total tickets were: ", totalTickets)
         winnerSelected = False
         for person in self.personList:
@@ -1201,7 +1209,7 @@ class MainWindow(QTW.QWidget):
     def handleOption1(self):
         #getUserInput(self.personList)
         self.saveStreamNameToFile()
-        self.loadFieldFromStream()
+        self.loadFromSiteViaExtension()
         self.getInputFromField()
         tryResetRound(self.personList)
         incrementAttendees(self.personList)

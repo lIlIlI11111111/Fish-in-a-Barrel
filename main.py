@@ -8,6 +8,10 @@ from PyQt6.QtCore import Qt
 import pygame
 import math
 import configparser
+import json
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 maxTitleLen = 1024
 randomPrecision = 1000
@@ -594,6 +598,119 @@ def blacklistCull(blacklist, personList):
             person.isIn = 0
 
 
+def streamerSlug(url):
+    """Return the streamer identifier from a watch URL (the last path segment),
+    lower-cased, so 'https://piczel.tv/watch/Llama' and 'piczel.tv/watch/llama'
+    compare equal."""
+    return url.strip().rstrip('/').split('/')[-1].strip().lower()
+
+
+def getExtensionPort():
+    """Port the local HTTP bridge listens on, from config.ini [extension] port."""
+    try:
+        config.read('config.ini')
+        return int(config.get('extension', 'port'))
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
+        return 8422
+
+
+class ExtensionBridge:
+    """Thread-safe hand-off between the Qt UI thread and the localhost HTTP server
+    that the paired browser extension polls. The extension can't open a listening
+    socket, so the app hosts the server and the extension is the client:
+      - the UI sets a scrape request (a stream URL) for the extension to fulfil,
+      - the extension GETs /request, scrapes the page, then POSTs /viewers,
+      - the UI consumes the matching submission.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._request = {"active": False, "url": ""}
+        self._submission = None  # {"url": str, "viewers": list, "ts": float}
+
+    def set_request(self, url):
+        with self._lock:
+            self._request = {"active": True, "url": url}
+            self._submission = None  # drop anything stale from a previous request
+
+    def clear_request(self):
+        with self._lock:
+            self._request = {"active": False, "url": ""}
+
+    def get_request(self):
+        with self._lock:
+            return dict(self._request)
+
+    def submit(self, url, viewers):
+        with self._lock:
+            self._submission = {"url": url, "viewers": viewers, "ts": time.time()}
+
+    def take_submission(self, url):
+        """Consume and return a submission whose stream matches `url`, else None."""
+        with self._lock:
+            sub = self._submission
+            if sub is not None and streamerSlug(sub["url"]) == streamerSlug(url):
+                self._submission = None
+                return sub
+            return None
+
+
+def makeBridgeHandler(bridge):
+    class BridgeHandler(BaseHTTPRequestHandler):
+        def _cors(self):
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+        def _json(self, code, obj):
+            body = json.dumps(obj).encode("utf-8")
+            self.send_response(code)
+            self._cors()
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self._cors()
+            self.end_headers()
+
+        def do_GET(self):
+            if self.path.startswith("/request"):
+                self._json(200, bridge.get_request())
+            else:
+                self._json(404, {"error": "not found"})
+
+        def do_POST(self):
+            if self.path.startswith("/viewers"):
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                raw = self.rfile.read(length) if length else b""
+                try:
+                    data = json.loads(raw.decode("utf-8"))
+                    bridge.submit(data.get("url", ""), data.get("viewers", []))
+                    self._json(200, {"ok": True})
+                except (ValueError, TypeError, UnicodeDecodeError):
+                    self._json(400, {"error": "bad json"})
+            else:
+                self._json(404, {"error": "not found"})
+
+        def log_message(self, *args):
+            pass  # silence per-request stderr logging
+
+    return BridgeHandler
+
+
+def startExtensionServer(bridge, port):
+    """Start the bridge HTTP server on a daemon thread; returns the server (or None)."""
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), makeBridgeHandler(bridge))
+    except OSError as e:
+        print("Could not start extension server on port {}: {}".format(port, e))
+        return None
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print("Extension bridge listening on http://127.0.0.1:{}".format(port))
+    return server
+
 
 class DataLossDialog(QTW.QDialog):
     def __init__(self, parent=None):
@@ -639,10 +756,12 @@ class DataLossDialog(QTW.QDialog):
 
 
 class MainWindow(QTW.QWidget):
-    def __init__(self, personList):
+    def __init__(self, personList, bridge=None):
         super().__init__()
         self.resize(2000, 1000)  # Set initial width to 800 and height to 600
         self.personList = personList
+        self.bridge = bridge
+        self.sharedIpGroups = {}  # in-memory only: group id -> [names]; never persisted/shown
 
         self.initUI()
     def loadPersonListData(self):
@@ -786,8 +905,8 @@ class MainWindow(QTW.QWidget):
         self.nameField.setPlaceholderText("Names go here")
         loadingStuffLayout.addWidget(self.nameField)
         
-        loadFromSiteButton = QTW.QPushButton("Load")
-        loadFromSiteButton.clicked.connect(self.loadFieldFromStream)
+        loadFromSiteButton = QTW.QPushButton("Load from site (extension)")
+        loadFromSiteButton.clicked.connect(self.loadFromSiteViaExtension)
         loadingFromSiteLayout.addWidget(loadFromSiteButton)
         
         loadFromFieldButton = QTW.QPushButton("Load")
@@ -895,44 +1014,103 @@ class MainWindow(QTW.QWidget):
         loadPlainTextFromFile(self.blacklistField, "blacklist.txt")
         return
     
-    def loadFieldFromStream(self):
+    def loadFromSiteViaExtension(self):
+        """Ask the paired browser extension to scrape the current stream page and
+        load the returned viewers (with shared-IP groups). Falls back to a
+        'paste manually' message if the extension doesn't answer within ~2s."""
         self.saveStreamNameToFile()
-        
-        #TODO fill self.nameField via a web getter (maybe Panda)
-        
-        #Blacklist handling
-        nameOfStreamer = self.streamURLField.toPlainText().split('/')[-1]
-        text = self.blacklistField.toPlainText()
-        if nameOfStreamer not in text:
-            text+="\n"+nameOfStreamer
-            self.blacklistField.setPlainText(text)
-        
-    
+        url = self.streamURLField.toPlainText().strip()
+
+        # Preserve prior behavior: make sure the streamer is on the blacklist.
+        nameOfStreamer = url.split('/')[-1]
+        blText = self.blacklistField.toPlainText()
+        if nameOfStreamer and nameOfStreamer not in blText:
+            self.blacklistField.setPlainText(blText + "\n" + nameOfStreamer)
+
+        if self.bridge is None:
+            self.rollLabel.setText("Extension bridge unavailable.")
+            return
+
+        # Post a scrape request and wait briefly for the extension to fulfil it.
+        self.bridge.set_request(url)
+        deadline = time.time() + 2.0
+        submission = None
+        while time.time() < deadline:
+            submission = self.bridge.take_submission(url)
+            if submission is not None:
+                break
+            time.sleep(0.05)
+        self.bridge.clear_request()
+
+        if submission is None:
+            self.rollLabel.setText(
+                "No response from the browser extension. Paste the viewer list "
+                "into the name field and click Load.")
+            return
+
+        self.loadViewers(submission["viewers"])
+        self.rollLabel.setText(
+            "Loaded {} viewers from the extension.".format(len(submission["viewers"])))
+
+    def loadViewers(self, viewers):
+        """Core loader shared by the extension and manual-paste paths.
+
+        `viewers` is a list of {"name": str, "group": str|None}. Matches or creates
+        each Person and marks them present, applies the blacklist, then activates
+        viewers: every ungrouped eligible viewer is active, and for each shared-IP
+        group exactly one randomly chosen eligible member is active (the rest stay
+        inactive so IP-sharing can't multiply raffle entries). Group membership is
+        kept in memory only (self.sharedIpGroups) and never persisted or displayed.
+        """
+        blacklist = self.blacklistField.toPlainText().split("\n")
+
+        present = []  # (person, group) for everyone in this submission
+        for v in viewers:
+            name = (v.get("name") or "").strip()
+            if not name:
+                continue
+            group = v.get("group")
+            match = None
+            for p in self.personList:
+                if p.name == name:
+                    match = p
+                    break
+            if match is None:
+                match = Person(name, 0, 0, 0)
+                self.personList.append(match)
+            present.append((match, group))
+
+        # Everyone present starts inactive; eligible viewers get activated below.
+        groups = {}    # group id -> [eligible persons]
+        for person, group in present:
+            person.isIn = 0
+            if person.onCooldown or person.name in blacklist:
+                continue
+            if group:
+                groups.setdefault(group, []).append(person)
+            else:
+                person.isIn = 1  # ungrouped eligible viewers are all active
+
+        # One randomly chosen member per shared-IP group counts as active.
+        self.sharedIpGroups = {gid: [p.name for p in members]
+                               for gid, members in groups.items()}
+        for members in groups.values():
+            random.choice(members).isIn = 1
+
+        # Enforce the blacklist across the whole list (parity with old behavior).
+        blacklistCull(blacklist, self.personList)
+        self.handleOption7()
+
     def getInputFromField(self):
         if self.nameField.toPlainText() == "":
             print("No text in input field")
             return
-        print("Viewed field successfully")
-        print(self.nameField.toPlainText())
-        for line in self.nameField.toPlainText().splitlines():
-            token = line.split("\n")[0]
-            found_match = False
-            for p in self.personList:
-                if p.name == token:
-                    found_match = True
-                    if p.onCooldown:
-                        break
-                    p.isIn = 1
-            if not found_match:
-                print("No match found, adding new user of name: \n", token)
-                newMan = Person(token, 0, 0, 1)
-                self.personList.append(newMan)
-                print("Set new member as final element in the array")
-                print("Their name in the array is: \n", self.personList[len(self.personList) - 1].name)
-        blacklistCull(self.blacklistField.toPlainText().split("\n"), self.personList)
-        self.handleOption7()
+        viewers = [{"name": line, "group": None}
+                   for line in self.nameField.toPlainText().splitlines()
+                   if line.strip()]
+        self.loadViewers(viewers)
         return
-    
+
     def getConfigValue(self):
         # Get the 'resetStyle' value from the config file
         return int(config.get('resetStyle', 'resetfrequency', fallback='1'))
@@ -1076,11 +1254,14 @@ def main():
     chooserNum = -1
     cont = 1
     
+    bridge = ExtensionBridge()
+    startExtensionServer(bridge, getExtensionPort())
+
     app = QTW.QApplication(sys.argv)
     stylesheet_path = 'styles.css'  # Path to your CSS file
     stylesheet = load_stylesheet(stylesheet_path)
     app.setStyleSheet(stylesheet)
-    window = MainWindow(personList)
+    window = MainWindow(personList, bridge)
     window.resize(1500,1000)
     icon = QIcon("./Icon.jpg")
     window.setWindowIcon(icon)
